@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления - Дистанционное Обучение</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/main.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    <div id="main-app">
+        <header>
+            <div class="container">
+                <div class="header-content">
+                    <div class="logo">
+                        <div class="logo-icon">🎓</div>
+                        <div class="logo-text">Дистанционное Обучение</div>
+                    </div>
+                    <div class="auth-buttons" v-if="userProfile">
+                        <span class="user-welcome">{{ userProfile.fio }}</span>
+                        <span class="user-role" :class="userProfile.role">({{ getRoleName(userProfile.role) }})</span>
+                        <button @click="logout" class="btn btn-primary">Выйти</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="container">
+            <div v-if="isLoading" class="loading-section">
+                <div class="loading-spinner"></div>
+                <p>Загрузка данных...</p>
+            </div>
+
+            <div v-else class="dashboard">
+                <!-- 👨‍🎓 ПАНЕЛЬ СТУДЕНТА -->
+                <div v-if="userProfile.role === 'student'" class="student-dashboard">
+                    <h1>Личный кабинет студента</h1>
+                    
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <h3>Мои курсы</h3>
+                            <div class="stat-number">{{ userCourses.length }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Пройдено тестов</h3>
+                            <div class="stat-number">{{ studentStats.completed_tests_count || 0 }}</div>
+                            <div class="stat-subtitle">из {{ studentStats.total_tests_count || 0 }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Средний балл</h3>
+                            <div class="stat-number" :style="{ color: getScoreColor(studentStats.average_score) }">
+                                {{ studentStats.average_score || '-' }}
+                            </div>
+                            <div class="progress-bar-small">
+                                <div class="progress-fill" :style="{
+                                    width: (studentStats.average_score || 0) * 10 + '%',
+                                    background: getScoreColor(studentStats.average_score)
+                                }"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button @click="openCompletedTestsModal" class="btn btn-info" 
+                                :disabled="studentStats.completed_tests_count === 0">
+                            📊 Просмотр пройденных тестов
+                        </button>
+                    </div>
+
+                    <div class="courses-section">
+                        <h2>Мои курсы</h2>
+                        <div v-if="userCourses.length > 0" class="courses-list">
+                            <div v-for="course in userCourses" :key="course.id" class="course-card">
+                                <h3>{{ course.name }}</h3>
+                                <p>Преподаватель: {{ course.teacher.fio }}</p>
+                                <p>Группа: {{ course.group.name }}</p>
+                                <div class="course-progress">
+                                    <span>Прогресс по курсу:</span>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" :style="{
+                                            width: (course.completion_rate || 0) + '%',
+                                            background: getProgressColor(course.completion_rate || 0)
+                                        }"></div>
+                                    </div>
+                                    <span>{{ course.completed_tests || 0 }}/{{ course.total_tests || 0 }} тестов</span>
+                                </div>
+                                <div class="course-actions">
+                                    <button @click="openTestsModal(course)" class="btn btn-primary">
+                                        📝 Перейти к тестам
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            <p>Нет доступных курсов</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 👨‍🏫 ПАНЕЛЬ ПРЕПОДАВАТЕЛЯ -->
+                <div v-else-if="userProfile.role === 'teacher'" class="teacher-dashboard">
+                    <h1>Панель преподавателя</h1>
+
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <h3>Мои курсы</h3>
+                            <div class="stat-number">{{ userStats.course_count || 0 }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Группы</h3>
+                            <div class="stat-number">{{ userStats.group_count || 0 }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Студентов</h3>
+                            <div class="stat-number">{{ userStats.student_count || 0 }}</div>
+                        </div>
+                    </div>
+
+                    <div class="courses-section">
+                        <h2>Мои курсы</h2>
+                        <div v-if="userCourses.length > 0" class="courses-list">
+                            <div v-for="course in userCourses" :key="course.id" class="course-card">
+                                <h3>{{ course.name }}</h3>
+                                <p>Группа: {{ course.group.name }}</p>
+                                <p>Студентов в группе: {{ course.student_count || 0 }}</p>
+                                <div class="course-progress">
+                                    <span>Общий прогресс группы:</span>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" :style="{
+                                            width: (course.average_progress || 0) + '%',
+                                            background: getProgressColor(course.average_progress || 0)
+                                        }"></div>
+                                    </div>
+                                    <span>{{ course.average_progress || 0 }}%</span>
+                                </div>
+                                <div class="course-meta">
+                                    <span>Тестов в курсе: {{ course.total_tests || 0 }}</span>
+                                </div>
+                                <div class="course-actions">
+                                    <button @click="openCourseStatistics(course)" class="btn btn-primary">
+                                        📊 Статистика курса
+                                    </button>
+                                    <button @click="openCourseTestsModal(course)" class="btn btn-secondary">
+                                        👁️ Просмотр тестов
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            <p>Нет созданных курсов</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 👨‍💼 ПАНЕЛЬ АДМИНИСТРАТОРА -->
+                <div v-else-if="userProfile.role === 'admin'" class="admin-dashboard">
+                    <h1>Панель администратора</h1>
+                    
+                    <div class="stats-cards">
+                        <div class="stat-card">
+                            <h3>Всего курсов</h3>
+                            <div class="stat-number">{{ userStats.course_count || 0 }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Пользователей</h3>
+                            <div class="stat-number">{{ userStats.user_count || 0 }}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Групп</h3>
+                            <div class="stat-number">{{ userStats.group_count || 0 }}</div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button @click="openUsersManagementModal" class="btn btn-primary">Управление пользователями</button>
+                        <button @click="openGroupsManagementModal" class="btn btn-secondary">Управление группами</button>
+                        <button @click="openTestsManagementModal" class="btn btn-info">Управление тестами</button>
+                        <button @click="openCoursesManagementModal" class="btn btn-warning">Управление курсами</button>
+                    </div>
+                </div>
+
+                <!-- Информация о пользователе -->
+                <div class="user-card">
+                    <h3>Информация о пользователе</h3>
+                    <div class="user-info">
+                        <div class="info-item">
+                            <strong>ФИО:</strong> {{ userProfile.fio }}
+                        </div>
+                        <div class="info-item">
+                            <strong>Логин:</strong> {{ userProfile.login }}
+                        </div>
+                        <div class="info-item">
+                            <strong>Email:</strong> {{ userProfile.email }}
+                        </div>
+                        <div class="info-item">
+                            <strong>Роль:</strong> 
+                            <span class="role-badge" :class="userProfile.role">
+                                {{ getRoleName(userProfile.role) }}
+                            </span>
+                        </div>
+                        <div class="info-item" v-if="userProfile.group">
+                            <strong>Группа:</strong> {{ userProfile.group.name }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно тестов курса для СТУДЕНТА -->
+            <div class="modal-overlay" v-if="showTestsModal" @click.self="closeTestsModal">
+                <div class="tests-modal">
+                    <button class="close-btn" @click="closeTestsModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>Тесты курса: {{ selectedCourse?.name }}</h2>
+                        <p>Преподаватель: {{ selectedCourse?.teacher?.fio }}</p>
+                    </div>
+
+                    <div class="tests-list">
+                        <div v-if="testsLoading" class="loading-tests">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка тестов...</p>
+                        </div>
+                        
+                        <div v-else-if="studentCourseTests.length === 0" class="no-tests">
+                            <p>В этом курсе пока нет тестов</p>
+                        </div>
+                        
+                        <div v-else class="test-items">
+                            <div v-for="test in studentCourseTests" :key="test.id" class="test-item">
+                                <div class="test-info">
+                                    <h4>{{ test.name }}</h4>
+                                    <span class="test-status" :class="getTestStatusClass(test)">
+                                        {{ getTestStatus(test) }}
+                                    </span>
+                                </div>
+                                <div class="test-actions">
+                                    <button 
+                                        v-if="!test.completed"
+                                        @click="openTestResultModal(test)" 
+                                        class="btn btn-primary btn-small"
+                                    >
+                                        Пройти тест
+                                    </button>
+                                    <span v-else class="test-completed">
+                                        Пройден {{ formatDate(test.completed_at) }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно для ввода результата теста -->
+            <div class="modal-overlay" v-if="showTestResultModal" @click.self="closeTestResultModal">
+                <div class="test-result-modal">
+                    <button class="close-btn" @click="closeTestResultModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>Прохождение теста</h2>
+                        <p>{{ selectedTest?.name }}</p>
+                    </div>
+
+                    <form @submit.prevent="submitTestResult" class="test-result-form">
+                        <div class="form-group">
+                            <label for="test-score">Введите ваш балл (0-10):</label>
+                            <input 
+                                type="number" 
+                                id="test-score"
+                                v-model.number="testScore"
+                                min="0" 
+                                max="10" 
+                                required
+                                class="form-control"
+                            >
+                            <small class="form-text">Оцените ваше выполнение теста от 0 до 10 баллов</small>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" @click="closeTestResultModal" class="btn btn-secondary">
+                                Отмена
+                            </button>
+                            <button type="submit" class="btn btn-primary">
+                                Сохранить результат
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="modal-overlay" v-if="showCompletedTestsModal" @click.self="closeCompletedTestsModal">
+                <div class="completed-tests-modal">
+                    <button class="close-btn" @click="closeCompletedTestsModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>Пройденные тесты</h2>
+                        <p>Общий прогресс: {{ studentStats.completion_percentage || 0 }}%</p>
+                    </div>
+
+                    <div class="completed-tests-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Всего тестов пройдено:</span>
+                            <span class="stat-value">{{ studentStats.completed_tests_count || 0 }}/{{ studentStats.total_tests_count || 0 }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Средний балл:</span>
+                            <span class="stat-value" :style="{ color: getScoreColor(studentStats.average_score) }">
+                                {{ studentStats.average_score || 0 }}/10
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="completed-tests-list">
+                        <div v-if="studentTestDetails.length === 0" class="no-tests">
+                            <p>Вы еще не прошли ни одного теста</p>
+                        </div>
+                        
+                        <div v-else class="test-details">
+                            <div v-for="test in studentTestDetails" :key="test.test_name + test.completed_at" 
+                                class="test-detail-item">
+                                <div class="test-main-info">
+                                    <h4>{{ test.test_name }}</h4>
+                                    <span class="test-score" :style="{ color: getScoreColor(test.score) }">
+                                        {{ test.score }}/{{ test.max_score }}
+                                    </span>
+                                </div>
+                                <div class="test-meta-info">
+                                    <div class="meta-item">
+                                        <span class="meta-label">Курс:</span>
+                                        <span class="meta-value">{{ test.course_name }}</span>
+                                    </div>
+                                    <div class="meta-item">
+                                        <span class="meta-label">Преподаватель:</span>
+                                        <span class="meta-value">{{ test.teacher_name }}</span>
+                                    </div>
+                                    <div class="meta-item">
+                                        <span class="meta-label">Дата прохождения:</span>
+                                        <span class="meta-value">{{ formatDate(test.completed_at) }}</span>
+                                    </div>
+                                </div>
+                                <div class="test-performance">
+                                    <div class="performance-bar">
+                                        <div class="performance-fill" :style="{
+                                            width: (test.score / test.max_score) * 100 + '%',
+                                            background: getScoreColor(test.score)
+                                        }"></div>
+                                    </div>
+                                    <span class="performance-text">
+                                        {{ (test.score / test.max_score) * 100 }}% выполнения
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Модальное окно статистики курса для преподавателя -->
+            <div class="modal-overlay" v-if="showCourseStatistics" @click.self="closeCourseStatistics">
+                <div class="course-statistics-modal">
+                    <button class="close-btn" @click="closeCourseStatistics">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>Статистика курса: {{ selectedCourseForStats?.name }}</h2>
+                        <p>Группа: {{ courseStatistics.group_name }}</p>
+                    </div>
+
+                    <div class="course-overview-stats">
+                        <div class="overview-grid">
+                            <div class="overview-item">
+                                <span class="overview-label">Всего студентов:</span>
+                                <span class="overview-value">{{ courseStatistics.total_students || 0 }}</span>
+                            </div>
+                            <div class="overview-item">
+                                <span class="overview-label">Тестов в курсе:</span>
+                                <span class="overview-value">{{ courseStatistics.total_tests || 0 }}</span>
+                            </div>
+                            <div class="overview-item">
+                                <span class="overview-label">Средний прогресс:</span>
+                                <span class="overview-value" :style="{ color: getProgressColor(courseStatistics.average_completion_rate) }">
+                                    {{ courseStatistics.average_completion_rate || 0 }}%
+                                </span>
+                            </div>
+                            <div class="overview-item">
+                                <span class="overview-label">Средний балл:</span>
+                                <span class="overview-value" :style="{ color: getScoreColor(courseStatistics.average_score) }">
+                                    {{ courseStatistics.average_score || 0 }}/10
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="students-progress">
+                        <h3>Прогресс студентов</h3>
+
+                        <div v-if="statsLoading" class="loading-stats">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка статистики...</p>
+                        </div>
+
+                        <div v-else-if="courseStatistics.student_progress && courseStatistics.student_progress.length === 0" class="no-data">
+                            <p>Нет данных о студентах</p>
+                        </div>
+
+                        <div v-else class="students-list">
+                            <div v-for="student in courseStatistics.student_progress" :key="student.student_id" 
+                                 class="student-progress-item">
+                                <div class="student-info">
+                                    <h4>{{ student.student_name }}</h4>
+                                    <span class="student-login">{{ student.student_login }}</span>
+                                </div>
+
+                                <div class="student-stats">
+                                    <div class="stat">
+                                        <span class="stat-label">Пройдено тестов:</span>
+                                        <span class="stat-value">{{ student.completed_tests }}/{{ student.total_tests }}</span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-label">Прогресс:</span>
+                                        <span class="stat-value" :style="{ color: getProgressColor(student.completion_rate) }">
+                                            {{ student.completion_rate }}%
+                                        </span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-label">Средний балл:</span>
+                                        <span class="stat-value" :style="{ color: getScoreColor(student.average_score) }">
+                                            {{ student.average_score }}/10
+                                        </span>
+                                    </div>
+                                    <div class="stat">
+                                        <span class="stat-label">Последняя активность:</span>
+                                        <span class="stat-value">{{ formatLastActivity(student.last_activity) }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="student-progress-visual">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" :style="{
+                                            width: student.completion_rate + '%',
+                                            background: getProgressColor(student.completion_rate)
+                                        }"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Модальное окно тестов курса для преподавателя -->
+            <div class="modal-overlay" v-if="showCourseTestsModal" @click.self="closeCourseTestsModal">
+                <div class="course-tests-modal">
+                    <button class="close-btn" @click="closeCourseTestsModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>Тесты курса: {{ selectedCourseForTests?.name }}</h2>
+                        <p>Группа: {{ selectedCourseForTests?.group?.name }}</p>
+                    </div>
+
+                    <div class="tests-overview">
+                        <div class="overview-grid">
+                            <div class="overview-item">
+                                <span class="overview-label">Всего тестов:</span>
+                                <span class="overview-value">{{ teacherCourseTests.length }}</span>
+                            </div>
+                            <div class="overview-item">
+                                <span class="overview-label">Студентов в группе:</span>
+                                <span class="overview-value">{{ teacherCourseTests[0]?.total_students || 0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tests-list">
+                        <div v-if="teacherTestsLoading" class="loading-tests">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка тестов...</p>
+                        </div>
+                        
+                        <div v-else-if="teacherCourseTests.length === 0" class="no-tests">
+                            <p>В этом курсе пока нет тестов</p>
+                        </div>
+                        
+                        <div v-else class="test-items">
+                            <div v-for="test in teacherCourseTests" :key="test.id" class="test-item">
+                                <div class="test-main-info">
+                                    <h4>{{ test.name }}</h4>
+                                    <span class="test-date">Создан: {{ formatTestDate(test.created_at) }}</span>
+                                </div>
+                                
+                                <div class="test-stats">
+                                    <div class="stat-row">
+                                        <div class="stat">
+                                            <span class="stat-label">Выполнили:</span>
+                                            <span class="stat-value">
+                                                {{ test.completed_count }}/{{ test.total_students }}
+                                            </span>
+                                        </div>
+                                        <div class="stat">
+                                            <span class="stat-label">Процент выполнения:</span>
+                                            <span class="stat-value" :style="{ color: getCompletionColor(test.completion_rate) }">
+                                                {{ test.completion_rate }}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-row">
+                                        <div class="stat">
+                                            <span class="stat-label">Средний балл:</span>
+                                            <span class="stat-value" :style="{ color: getScoreColor(test.average_score) }">
+                                                {{ test.average_score }}/10
+                                            </span>
+                                        </div>
+                                        <div class="stat">
+                                            <span class="stat-label">Статус:</span>
+                                            <span class="stat-value" :class="getCompletionStatus(test.completion_rate)">
+                                                {{ getCompletionStatusText(test.completion_rate) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="test-progress">
+                                    <div class="progress-info">
+                                        <span>Прогресс выполнения:</span>
+                                        <span>{{ test.completion_rate }}%</span>
+                                    </div>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" :style="{
+                                            width: test.completion_rate + '%',
+                                            background: getCompletionColor(test.completion_rate)
+                                        }"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-overlay" v-if="showUsersManagementModal" @click.self="closeUsersManagementModal">
+                <div class="users-management-modal">
+                    <button class="close-btn" @click="closeUsersManagementModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>Управление пользователями</h2>
+                        <button @click="openAddUserModal" class="btn btn-primary">+ Добавить пользователя</button>
+                    </div>
+
+                    <div class="users-list">
+                        <div v-if="usersLoading" class="loading-section">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка пользователей...</p>
+                        </div>
+                        
+                        <div v-else-if="allUsers.length === 0" class="empty-state">
+                            <p>Пользователи не найдены</p>
+                        </div>
+                        
+                        <div v-else class="users-table">
+                            <div class="table-header">
+                                <div class="table-row">
+                                    <div class="table-cell">ФИО</div>
+                                    <div class="table-cell">Логин</div>
+                                    <div class="table-cell">Email</div>
+                                    <div class="table-cell">Роль</div>
+                                    <div class="table-cell">Группа</div>
+                                    <div class="table-cell actions">Действия</div>
+                                </div>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="user in allUsers" :key="user.id" class="table-row">
+                                    <div class="table-cell">{{ user.fio }}</div>
+                                    <div class="table-cell">{{ user.login }}</div>
+                                    <div class="table-cell">{{ user.email }}</div>
+                                    <div class="table-cell">
+                                        <span class="role-badge" :class="user.role">{{ getRoleName(user.role) }}</span>
+                                    </div>
+                                    <div class="table-cell">{{ user.group?.name || '-' }}</div>
+                                    <div class="table-cell actions">
+                                        <button @click="openEditUserModal(user)" class="btn btn-small btn-primary">
+                                            Редактировать
+                                        </button>
+                                        <button @click="deleteUser(user)" class="btn btn-small btn-danger" 
+                                                :disabled="user.id === userProfile.id">
+                                            Удалить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-overlay" v-if="showUserFormModal" @click.self="closeUserFormModal">
+                <div class="user-form-modal">
+                    <button class="close-btn" @click="closeUserFormModal">&times;</button>
+                    
+                    <div class="modal-header">
+                        <h2>{{ editingUser ? 'Редактирование пользователя' : 'Добавление пользователя' }}</h2>
+                    </div>
+
+                    <form @submit.prevent="submitUserForm" class="user-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-fio">ФИО *</label>
+                                <input type="text" id="user-fio" v-model="userForm.fio" required class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label for="user-login">Логин *</label>
+                                <input type="text" id="user-login" v-model="userForm.login" required class="form-control">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-email">Email *</label>
+                                <input type="email" id="user-email" v-model="userForm.email" required class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label for="user-password">{{ editingUser ? 'Новый пароль' : 'Пароль *' }}</label>
+                                <input type="password" id="user-password" v-model="userForm.password" 
+                                    :required="!editingUser" class="form-control">
+                                <small v-if="editingUser" class="form-text">Оставьте пустым, если не нужно менять пароль</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="user-role">Роль *</label>
+                                <select id="user-role" v-model="userForm.role" required class="form-control">
+                                    <option value="student">Студент</option>
+                                    <option value="teacher">Преподаватель</option>
+                                    <option value="admin">Администратор</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="user-group">Группа</label>
+                                <select id="user-group" v-model="userForm.group_id" class="form-control">
+                                    <option :value="null">Не выбрана</option>
+                                    <option v-for="group in allGroups" :key="group.id" :value="group.id">
+                                        {{ group.name }}
+                                    </option>
+                                </select>
+                                <small class="form-text">Только для студентов</small>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" @click="closeUserFormModal" class="btn btn-secondary">Отмена</button>
+                            <button type="submit" class="btn btn-primary" :disabled="userFormLoading">
+                                {{ userFormLoading ? 'Сохранение...' : (editingUser ? 'Сохранить' : 'Добавить') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="modal-overlay" v-if="showGroupsManagementModal" @click.self="closeGroupsManagementModal">
+                <div class="groups-management-modal">
+                    <button class="close-btn" @click="closeGroupsManagementModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>Управление группами</h2>
+                        <button @click="openAddGroupModal" class="btn btn-primary">+ Добавить группу</button>
+                    </div>
+
+                    <div class="groups-list">
+                        <div v-if="groupsLoading" class="loading-section">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка групп...</p>
+                        </div>
+
+                        <div v-else-if="allGroups.length === 0" class="empty-state">
+                            <p>Группы не найдены</p>
+                        </div>
+
+                        <div v-else class="groups-table">
+                            <div class="table-header">
+                                <div class="table-row">
+                                    <div class="table-cell">ID</div>
+                                    <div class="table-cell">Название</div>
+                                    <div class="table-cell">Дата создания</div>
+                                    <div class="table-cell actions">Действия</div>
+                                </div>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="group in allGroups" :key="group.id" class="table-row">
+                                    <div class="table-cell">{{ group.id }}</div>
+                                    <div class="table-cell">{{ group.name }}</div>
+                                    <div class="table-cell">{{ formatDate(group.created_at) }}</div>
+                                    <div class="table-cell actions">
+                                        <button @click="openEditGroupModal(group)" class="btn btn-small btn-primary">
+                                            Редактировать
+                                        </button>
+                                        <button @click="deleteGroup(group)" class="btn btn-small btn-danger">
+                                            Удалить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно формы группы -->
+            <div class="modal-overlay" v-if="showGroupFormModal" @click.self="closeGroupFormModal">
+                <div class="group-form-modal">
+                    <button class="close-btn" @click="closeGroupFormModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>{{ editingGroup ? 'Редактирование группы' : 'Добавление группы' }}</h2>
+                    </div>
+
+                    <form @submit.prevent="submitGroupForm" class="group-form">
+                        <div class="form-group">
+                            <label for="group-name">Название группы *</label>
+                            <input type="text" id="group-name" v-model="groupForm.name" required class="form-control">
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" @click="closeGroupFormModal" class="btn btn-secondary">Отмена</button>
+                            <button type="submit" class="btn btn-primary" :disabled="groupFormLoading">
+                                {{ groupFormLoading ? 'Сохранение...' : (editingGroup ? 'Сохранить' : 'Добавить') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Модальное окно управления тестами -->
+            <div class="modal-overlay" v-if="showTestsManagementModal" @click.self="closeTestsManagementModal">
+                <div class="tests-management-modal">
+                    <button class="close-btn" @click="closeTestsManagementModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>Управление тестами</h2>
+                        <button @click="openAddTestModal" class="btn btn-primary">+ Добавить тест</button>
+                    </div>
+
+                    <div class="tests-list">
+                        <div v-if="testsLoading" class="loading-section">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка тестов...</p>
+                        </div>
+
+                        <div v-else-if="allTests.length === 0" class="empty-state">
+                            <p>Тесты не найдены</p>
+                        </div>
+
+                        <div v-else class="tests-table">
+                            <div class="table-header">
+                                <div class="table-row">
+                                    <div class="table-cell">ID</div>
+                                    <div class="table-cell">Название</div>
+                                    <div class="table-cell">Курс</div>
+                                    <div class="table-cell">Дата создания</div>
+                                    <div class="table-cell actions">Действия</div>
+                                </div>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="test in allTests" :key="test.id" class="table-row">
+                                    <div class="table-cell">{{ test.id }}</div>
+                                    <div class="table-cell">{{ test.name }}</div>
+                                    <div class="table-cell">{{ test.course ? test.course.name : 'Неизвестно' }}</div>
+                                    <div class="table-cell">{{ formatDate(test.created_at) }}</div>
+                                    <div class="table-cell actions">
+                                        <button @click="openEditTestModal(test)" class="btn btn-small btn-primary">
+                                            Редактировать
+                                        </button>
+                                        <button @click="deleteTest(test)" class="btn btn-small btn-danger">
+                                            Удалить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно формы теста -->
+            <div class="modal-overlay" v-if="showTestFormModal" @click.self="closeTestFormModal">
+                <div class="test-form-modal">
+                    <button class="close-btn" @click="closeTestFormModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>{{ editingTest ? 'Редактирование теста' : 'Добавление теста' }}</h2>
+                    </div>
+
+                    <form @submit.prevent="submitTestForm" class="test-form">
+                        <div class="form-group">
+                            <label for="test-name">Название теста *</label>
+                            <input type="text" id="test-name" v-model="testForm.name" required class="form-control">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="test-course">Курс *</label>
+                            <select id="test-course" v-model="testForm.course_id" required class="form-control">
+                                <option value="">Выберите курс</option>
+                                <option v-for="course in allCourses" :key="course.id" :value="course.id">
+                                    {{ course.name }} ({{ course.group ? course.group.name : 'Без группы' }})
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" @click="closeTestFormModal" class="btn btn-secondary">Отмена</button>
+                            <button type="submit" class="btn btn-primary" :disabled="testFormLoading">
+                                {{ testFormLoading ? 'Сохранение...' : (editingTest ? 'Сохранить' : 'Добавить') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Модальное окно управления курсами -->
+            <div class="modal-overlay" v-if="showCoursesManagementModal" @click.self="closeCoursesManagementModal">
+                <div class="courses-management-modal">
+                    <button class="close-btn" @click="closeCoursesManagementModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>Управление курсами</h2>
+                        <button @click="openAddCourseModal" class="btn btn-primary">+ Добавить курс</button>
+                    </div>
+
+                    <div class="courses-list">
+                        <div v-if="coursesLoading" class="loading-section">
+                            <div class="loading-spinner"></div>
+                            <p>Загрузка курсов...</p>
+                        </div>
+
+                        <div v-else-if="allCourses.length === 0" class="empty-state">
+                            <p>Курсы не найдены</p>
+                        </div>
+
+                        <div v-else class="courses-table">
+                            <div class="table-header">
+                                <div class="table-row">
+                                    <div class="table-cell">ID</div>
+                                    <div class="table-cell">Название</div>
+                                    <div class="table-cell">Преподаватель</div>
+                                    <div class="table-cell">Группа</div>
+                                    <div class="table-cell">Дата создания</div>
+                                    <div class="table-cell actions">Действия</div>
+                                </div>
+                            </div>
+                            <div class="table-body">
+                                <div v-for="course in allCourses" :key="course.id" class="table-row">
+                                    <div class="table-cell">{{ course.id }}</div>
+                                    <div class="table-cell">{{ course.name }}</div>
+                                    <div class="table-cell">{{ course.teacher ? course.teacher.fio : 'Неизвестно' }}</div>
+                                    <div class="table-cell">{{ course.group ? course.group.name : 'Без группы' }}</div>
+                                    <div class="table-cell">{{ formatDate(course.created_at) }}</div>
+                                    <div class="table-cell actions">
+                                        <button @click="openEditCourseModal(course)" class="btn btn-small btn-primary">
+                                            Редактировать
+                                        </button>
+                                        <button @click="deleteCourse(course)" class="btn btn-small btn-danger">
+                                            Удалить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Модальное окно формы курса -->
+            <div class="modal-overlay" v-if="showCourseFormModal" @click.self="closeCourseFormModal">
+                <div class="course-form-modal">
+                    <button class="close-btn" @click="closeCourseFormModal">&times;</button>
+
+                    <div class="modal-header">
+                        <h2>{{ editingCourse ? 'Редактирование курса' : 'Добавление курса' }}</h2>
+                    </div>
+
+                    <form @submit.prevent="submitCourseForm" class="course-form">
+                        <div class="form-group">
+                            <label for="course-name">Название курса *</label>
+                            <input type="text" id="course-name" v-model="courseForm.name" required class="form-control">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="course-teacher">Преподаватель *</label>
+                                <select id="course-teacher" v-model="courseForm.teacher_id" required class="form-control">
+                                    <option value="">Выберите преподавателя</option>
+                                    <option v-for="teacher in allTeachers" :key="teacher.id" :value="teacher.id">
+                                        {{ teacher.fio }} ({{ teacher.login }})
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="course-group">Группа *</label>
+                                <select id="course-group" v-model="courseForm.group_id" required class="form-control">
+                                    <option value="">Выберите группу</option>
+                                    <option v-for="group in allGroups" :key="group.id" :value="group.id">
+                                        {{ group.name }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" @click="closeCourseFormModal" class="btn btn-secondary">Отмена</button>
+                            <button type="submit" class="btn btn-primary" :disabled="courseFormLoading">
+                                {{ courseFormLoading ? 'Сохранение...' : (editingCourse ? 'Сохранить' : 'Добавить') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="container">
+                <div class="footer-content">
+                    <div class="footer-section">
+                        <h3>Система Дистанционного Обучения</h3>
+                        <p>Платформа для сбора и анализа данных об успеваемости</p>
+                    </div>
+                    <div class="footer-section">
+                        <h3>Контакты</h3>
+                        <p>Техническая поддержка: support@edu.ru</p>
+                    </div>
+                </div>
+                <div class="footer-bottom">
+                    <p>&copy; 2024 Система Дистанционного Обучения</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
